@@ -1,4 +1,4 @@
-import {ESTree} from './types'
+import {ESTree, Node} from './types'
 import walk from 'acorn-walk'
 let hasOwn = Object.prototype.hasOwnProperty;
 import * as gen from './astCreator'
@@ -11,19 +11,36 @@ import * as gen from './astCreator'
 export function hoist(functionNode: ESTree.FunctionExpression| ESTree.ArrowFunctionExpression){
     let vars = {}
 
-
-    walk.simple(functionNode, {
-        VariableDeclaration: (node: ESTree.VariableDeclaration)=>{
-            node.declarations.forEach(dec=>{
-                let name = (dec.id as ESTree.Identifier).name
-                vars[name] = gen.Identifier({
-                    name,
-                    // @ts-ignore
-                    start: dec.id.start, end: dec.id.end,
-                })
-
-
+    function varDeclToExpr(vdec: ESTree.VariableDeclaration, includeIdentifiers: boolean){
+        let exprs = [];
+        vdec.declarations.forEach(dec=>{
+            let name = (dec.id as ESTree.Identifier).name
+            vars[name] = gen.Identifier({
+                name,
+                // @ts-ignore
+                start: dec.id.start, end: dec.id.end,
             })
+            if(dec.init){
+                exprs.push(gen.AssignmentExpression('=', dec.id, dec.init))
+            } else if(includeIdentifiers){
+                exprs.push(dec.id)
+            }
+        })
+        if(exprs.length == 0){
+            return null
+        }
+        if(exprs.length === 1){
+            return exprs[0]
+        }
+        return gen.SequenceExpression(exprs)
+    }
+
+    walk.ancestor(functionNode, {
+        VariableDeclaration: (node: ESTree.VariableDeclaration, parents)=>{
+            let expr = varDeclToExpr(node, false)
+            if(expr == null) {
+
+            }
         }
     })
 }

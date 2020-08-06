@@ -27,3 +27,21 @@ export function VariableDeclarator(option: {
         init: option.init,
     }
 }
+
+export function AssignmentExpression(operator, left, right, option?){
+    option = option || {}
+    return {
+        type: "AssignmentExpression",
+        start: option.start,
+        end: option.end,
+        operator,
+        left, right,
+    }
+}
+
+export function SequenceExpression(arr: ESTree.Expression[]){
+    return {
+        type: 'SequenceExpression',
+        expressions: arr,
+    }
+}
