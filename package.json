@@ -1,0 +1,30 @@
+{
+  "name": "estime-resync",
+  "version": "1.0.0",
+  "description": "transform AST from with-(async/generator)-node to es5 compatible version, lightweight, fast, that you can use it runtime~",
+  "main": "index.js",
+  "directories": {
+    "doc": "doc"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IAIAE/estime-resync.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/IAIAE/estime-resync/issues"
+  },
+  "homepage": "https://github.com/IAIAE/estime-resync#readme",
+  "devDependencies": {
+    "@types/estree": "0.0.45",
+    "@types/estree-jsx": "0.0.0"
+  },
+  "dependencies": {
+    "acorn-walk": "^7.2.0"
+  }
+}
