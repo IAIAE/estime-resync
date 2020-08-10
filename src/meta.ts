@@ -102,7 +102,7 @@ export const hasSideEffects = makePredicate('hasSideEffects', sideEffectTypes)
 export const containsLeap = makePredicate('containsLeap', leapTypes)
 
 
-let typeKeyMap = {
+export const typeKeyMap = {
     ArrayExpression: ['elements'],
     AssignmentExpression: ['left', 'right'],
     BinaryExpression: ['left', 'right'],

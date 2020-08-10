@@ -1,6 +1,7 @@
 import {ESTree} from './types'
 import Emitter from './emitter'
 
+
 class Entry { }
 
 export class FunctionEntry extends Entry {

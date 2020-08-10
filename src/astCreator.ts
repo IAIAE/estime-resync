@@ -28,6 +28,14 @@ export function VariableDeclarator(option: {
     }
 }
 
+export function VariableDeclaration(kind, declarations){
+    return {
+        type: 'VariableDeclaration',
+        kind,
+        declarations,
+    }
+}
+
 export function AssignmentExpression(operator, left, right, option?){
     option = option || {}
     return {
@@ -44,4 +52,34 @@ export function SequenceExpression(arr: ESTree.Expression[]){
         type: 'SequenceExpression',
         expressions: arr,
     }
+}
+
+export function ExpressionStatement(child){
+    return {
+        type: 'ExpressionStatement',
+        expression: child,
+    }
+}
+
+export function FunctionExpression(option: {
+    id: any,
+    expression?: boolean
+    generator?: boolean
+    async?: boolean
+    params: any
+    body: any
+}){
+    return  {
+        type: 'FunctionExpression',
+        id: option.id,
+        expression: option.expression || false,
+        generator:  option.generator || false,
+        async:  option.async || false,
+        params: option.params,
+        body: option.body,
+    }
+}
+
+export function clone(node){
+    return JSON.parse(JSON.stringify(node))
 }
