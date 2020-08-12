@@ -1,6 +1,10 @@
 import {typeKeyMap} from './meta'
+import {Node} from './types'
 
-export function walk(node, visitors, parents = [], parentKeys = []){
+
+export function walk(node:Node, visitors: {
+    [key: string]: (n: Node, parents: Node[], parentKeys: (string|number)[][]) => true|void
+}, parents:Node[] = [], parentKeys:(string | number)[][] = []){
     if(!node) return
     let func = visitors[node.type]
     let skip = false

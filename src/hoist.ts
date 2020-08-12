@@ -10,7 +10,7 @@ import { uuid } from './uid';
  * 最终返回记录的变量名数组，以便上级统一声明这些变量
  * @param functionNode
  */
-export function hoist(functionNode: ESTree.FunctionExpression| ESTree.ArrowFunctionExpression){
+export function hoist(functionNode: ESTree.FunctionExpression| ESTree.FunctionDeclaration){
     let vars = {}
 
     function varDeclToExpr(vdec: ESTree.VariableDeclaration, includeIdentifiers: boolean){

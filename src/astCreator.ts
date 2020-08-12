@@ -1,28 +1,20 @@
 import {ESTree, Node} from './types'
 
 export function Identifier(option: {
-    start?: number
-    end?: number
     name: string
-}){
+}):ESTree.Identifier{
     return {
         type: 'Identifier',
-        start: option.start,
-        end: option.end,
         name: option.name,
     }
 }
 
 export function VariableDeclarator(option: {
-    start?: number
-    end?: number
-    id: ESTree.Identifier,
-    init: Node
+    id: any,
+    init: any
 }){
     return {
         type: 'VariableDeclarator',
-        start: option.start,
-        end: option.end,
         id: option.id,
         init: option.init,
     }
@@ -35,7 +27,13 @@ export function VariableDeclaration(kind, declarations){
         declarations,
     }
 }
-
+export function Literal(val): ESTree.Literal{
+    return {
+        "type": "Literal",
+        "value": val,
+        "raw": JSON.stringify(val),
+    }
+}
 export function AssignmentExpression(operator, left, right, option?){
     option = option || {}
     return {
@@ -80,6 +78,106 @@ export function FunctionExpression(option: {
     }
 }
 
+export function SwitchStatement(test, cases){
+    return {
+        "type": "SwitchStatement",
+        "discriminant": test,
+        "cases": cases
+    }
+}
+
+export function SwitchCase(test, consequent){
+    return {
+        "type": "SwitchCase",
+        consequent,
+        test,
+    }
+}
+
 export function clone(node){
     return JSON.parse(JSON.stringify(node))
+}
+
+export function WhileStatement(test, body){
+    return {
+        "type": "WhileStatement",
+        test,
+        body,
+    }
+}
+
+export function ArrayExpression(elements){
+    return {
+        "type": "ArrayExpression",
+        elements
+    }
+}
+
+export function YieldExpression(delegate: boolean, argument){
+    return {
+        type: 'YieldExpression',
+        delegate,
+        argument,
+    }
+}
+
+export function BreakStatement(label?) {
+    return {
+        type: 'BreakStatement',
+        label: label || null,
+    }
+}
+
+export function IfStatement(test, consequent, alternate?){
+    return {
+        "type": "IfStatement",
+        "test": test,
+        "consequent": consequent,
+        "alternate": alternate,
+    }
+}
+export function MemberExpression(varName, key, computed){
+    return {
+        "type": "MemberExpression",
+        "object": {
+            "type": "Identifier",
+            "name": varName
+        },
+        "property": {
+            "type": "Identifier",
+            "name": key
+        },
+        computed,
+    }
+}
+
+export function UnaryExpression(operator, argument){
+    return {
+        "type": "UnaryExpression",
+        "operator": operator,
+        "prefix": true,
+        "argument": argument
+    }
+}
+
+export function CallExpression(callee, args){
+    return {
+        type: 'CallExpression',
+        callee,
+        arguments: args
+    }
+}
+
+export function ReturnStatement(args){
+    return {
+        type: 'ReturnStatement',
+        argument: args,
+    }
+}
+
+export function BlockStatement(body:any[]){
+    return {
+        type: 'BlockStatement',
+        body,
+    }
 }
