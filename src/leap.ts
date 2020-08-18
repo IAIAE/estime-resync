@@ -48,8 +48,8 @@ export class TryEntry extends Entry{
 
 export class CatchEntry extends Entry{
     firstLoc: ESTree.Literal
-    paramId: ESTree.Identifier
-    constructor(firstLoc: ESTree.Literal, paramId: ESTree.Identifier){
+    paramId: ESTree.Pattern
+    constructor(firstLoc: ESTree.Literal, paramId: ESTree.Pattern){
         super()
         this.firstLoc = firstLoc
         this.paramId = paramId

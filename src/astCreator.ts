@@ -128,12 +128,30 @@ export function BreakStatement(label?) {
     }
 }
 
+export function ConditionalExpression(test, consequent, alternate){
+    return {
+        "type": "ConditionalExpression",
+        "test": test,
+        "consequent": consequent,
+        "alternate": alternate,
+    }
+}
+
 export function IfStatement(test, consequent, alternate?){
     return {
         "type": "IfStatement",
         "test": test,
         "consequent": consequent,
         "alternate": alternate,
+    }
+}
+
+export function BinaryExpression(op, left, right){
+    return {
+        "type": "BinaryExpression",
+        "left": left,
+        "operator": op,
+        "right": right,
     }
 }
 export function MemberExpression(varName, key, computed){

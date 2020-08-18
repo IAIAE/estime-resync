@@ -1,9 +1,12 @@
 import {Node, ESTree } from "./types";
-import { LeapManager, TryEntry, LabeledEntry, LoopEntry} from "./leap";
+import { LeapManager, TryEntry, LabeledEntry, LoopEntry, SwitchEntry, CatchEntry, FinallyEntry} from "./leap";
 import * as gen from './astCreator'
 import * as meta from './meta'
 import { ForStatement } from "estree";
 import * as util from './util'
+import { walk } from "./astHelper";
+
+const hasOwn = Object.prototype.hasOwnProperty
 
 export default class Emitter {
     nextTempId: number
@@ -84,7 +87,7 @@ export default class Emitter {
             this.emit(catchCall)
         }
     }
-    jump(toLoc: ESTree.Literal){
+    jump(toLoc:ESTree.Literal){
         this.emitAssign(this.contextProperty('next'), toLoc)
         this.emit(gen.BreakStatement())
     }
@@ -225,10 +228,12 @@ export default class Emitter {
             return;
         }
 
+        // 如果不包含跳转，该statement直接emit到结果集中
         if(!meta.containsLeap(stmt)){
             this.emit(stmt)
             return;
         }
+
         switch(stmt.type){
             case 'ExpressionStatement':
                 this.explodeExpression(stmt.expression, true)
@@ -335,15 +340,204 @@ export default class Emitter {
                 this.mark(after)
                 break
             case 'BreakStatement':
-                this.emit
+                this.emitAbruptCompletion({
+                    type: 'break',
+                    target: this.leapManager.getBreakLoc(stmt.label)
+                })
+                break;
+            case 'ContinueStatement':
+                this.emitAbruptCompletion({
+                    type: 'continue',
+                    target: this.leapManager.getContinueLoc(stmt.label)
+                })
+                break;
+            case 'SwitchStatement':
+                let disc = this.emitAssign(
+                    this.makeTempVar(),
+                    this.explodeExpression(stmt.discriminant)
+                )
+
+                after = this.loc()
+                let defaultLoc = this.loc()
+                let condition:any = defaultLoc
+                let caseLocs = []
+                let cases = stmt.cases || []
+                for(let i= cases.length-1; i>=0; --i){
+                    let c = cases[i]
+                    if(c.test){
+                        condition = gen.ConditionalExpression(
+                            gen.BinaryExpression('===', gen.clone(disc), c.test),
+                            caseLocs[i] = this.loc(),
+                            condition,
+                        )
+                    }else{
+                        caseLocs[i] = defaultLoc
+                    }
+                }
+                let discriminant = stmt.discriminant;
+                stmt.discriminant = condition
+                this.jump(this.explodeExpression(discriminant))
+
+                this.leapManager.withEntry(
+                    new SwitchEntry(after),
+                    ()=>{
+                        stmt = stmt as ESTree.SwitchStatement;
+                        stmt.cases.forEach((item, i)=>{
+                            this.mark(caseLocs[i])
+                            item.consequent.forEach(node=>{
+                                this.explodeStatement(node)
+                            })
+                        })
+                    }
+                )
+                this.mark(after)
+                if(defaultLoc.value === -1){
+                    this.mark(defaultLoc)
+                }
+                break;
+
+            case 'IfStatement':
+
+                let elseLoc = stmt.alternate && this.loc();
+                after = this.loc()
+                this.jumpIfNot(
+                    this.explodeExpression(stmt.test),
+                    elseLoc || after,
+                )
+                this.explodeStatement(stmt.consequent)
+                if(elseLoc){
+                    this.jump(after)
+                    this.mark(elseLoc)
+                    this.explodeStatement(stmt.alternate)
+                }
+                this.mark(after)
+                break
+            case 'ReturnStatement':
+                this.emitAbruptCompletion({
+                    type: 'return',
+                    value: this.explodeExpression(stmt.argument),
+                })
+                break;
+            case 'WithStatement':
+                throw new Error('with statement nor support in generator functions')
+            case 'TryStatement':
+                after = this.loc()
+                let handler = stmt.handler
+                let catchLoc = handler && this.loc()
+                let catchEntry = catchLoc && new CatchEntry(catchLoc, handler.param)
+
+                let finallyLoc = stmt.finalizer && this.loc()
+                let finallyEntry = finallyLoc && new FinallyEntry(finallyLoc, after)
+                let tryEntry = new TryEntry(
+                    this.getUnmarkedCurrentLoc(),
+                    catchEntry,
+                    finallyEntry,
+                );
+                this.tryEntries.push(tryEntry)
+                this.updateContextPrevLoc(tryEntry.firstLoc)
+                this.leapManager.withEntry(tryEntry, ()=>{
+                    this.explodeStatement((stmt as ESTree.TryStatement).block)
+                    if(catchLoc){
+                        if(finallyLoc){
+                            this.jump(finallyLoc)
+                        }else{
+                            this.jump(after)
+                        }
+                        this.updateContextPrevLoc(this.mark(catchLoc))
+                        let body = (stmt as ESTree.TryStatement).handler.body
+                        let safeParam = this.makeTempVar()
+                        this.clearPendingException(tryEntry.firstLoc, safeParam)
+
+                        // catch会bind一个err变量: catch(err){....}，需要替换catch下级的对该变量的访问
+                        walk(body, {
+                            Identifier: (node: ESTree.Identifier, parents, parentKeys)=>{
+                                // 按理说作为左值有引用才需要替换，这里统一替换不判断是否引用
+                                if(node.name === (handler.param as ESTree.Identifier).name && true){
+                                    let father = parents[parents.length - 1]
+                                    let fatherKey = parentKeys[parents.length - 1]
+                                    util.replaceOrRemoveChild(father, node, fatherKey, gen.clone(safeParam))
+                                }
+                            },
+                            // 其他会建立新的scope的表达式，如果会注入变量err，不要去替换
+
+                        })
+
+                    }
+                })
+
         }
     }
+    updateContextPrevLoc(loc?: ESTree.Literal){
+        if(loc){
+            if(loc.value === -1){
+                loc.value = this.listing.length
+            }else{
+                // loc.value === this.listing.length
+            }
+        }else{
+            loc = this.getUnmarkedCurrentLoc()
+        }
 
-    explodeExpression(node: ESTree.Expression, ignoreResult?: boolean): Node {
-        // todo:
-        return node;
+        this.emitAssign(this.contextProperty('prev'), loc)
+    }
+    getUnmarkedCurrentLoc(){
+        return gen.Literal(this.listing.length)
     }
 
+    /**
+     * emit ==> _context.abrupt('return', record.(value|target))
+     * @param record
+     */
+    emitAbruptCompletion(record: {type: string, target?: ESTree.Literal, value?:any}){
+        if(!isValidCompletion(record)){
+            throw new Error('invalid completion record: '+JSON.stringify(record))
+        }
+        let abruptArgs = [gen.Literal(record.type)]
+        if(record.type === 'break' || record.type === 'continue') {
+            abruptArgs[1] = this.insertedLocsHas(record.target)?record.target:gen.clone(record.target)
+        } else if(record.type == 'return' || record.type == 'throw'){
+            if(record.value){
+                abruptArgs[1] = this.insertedLocsHas(record.value)?record.value:gen.clone(record.value)
+            }
+        }
+
+        this.emit(
+            gen.ReturnStatement(
+                gen.CallExpression(
+                    this.contextProperty('abrupt'),
+                    abruptArgs
+                )
+            )
+        );
+    }
+
+    insertedLocsHas(some){
+        return this.insertedLocs.some(_=>_===some)
+    }
+
+    explodeExpression(node: Node, ignoreResult?: boolean): ESTree.Literal {
+        // todo:
+        return;
+    }
+
+
+
+}
+
+function isValidCompletion(record: {type: string, target?: ESTree.Literal}){
+    let type = record.type
+    if(type == 'normal'){
+        return !hasOwn.call(record, 'target')
+    }
+    if(type == 'break' || type == 'continue'){
+        return !hasOwn.call(record, 'value') && record.target.type === 'Literal'
+    }
+
+    if(type == 'return' || type == 'throw'){
+        return hasOwn.call(record, 'value') && !hasOwn.call(record, 'target')
+    }
+
+    return false
 }
 
 function getDeclError(node) {
