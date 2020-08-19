@@ -4,7 +4,7 @@ import * as gen from './astCreator'
 import * as meta from './meta'
 import { ForStatement } from "estree";
 import * as util from './util'
-import { walk } from "./astHelper";
+import { walk, SCOPE_KEY, walkWithScope } from "./astHelper";
 
 const hasOwn = Object.prototype.hasOwnProperty
 
@@ -449,22 +449,48 @@ export default class Emitter {
                         this.clearPendingException(tryEntry.firstLoc, safeParam)
 
                         // catch会bind一个err变量: catch(err){....}，需要替换catch下级的对该变量的访问
-                        walk(body, {
+                        walkWithScope(body, {
                             Identifier: (node: ESTree.Identifier, parents, parentKeys)=>{
-                                // 按理说作为左值有引用才需要替换，这里统一替换不判断是否引用
+                                // 按理说这个变量作为右值有使用才需要替换，这里统一替换不判断是否引用
                                 if(node.name === (handler.param as ESTree.Identifier).name && true){
                                     let father = parents[parents.length - 1]
                                     let fatherKey = parentKeys[parents.length - 1]
                                     util.replaceOrRemoveChild(father, node, fatherKey, gen.clone(safeParam))
                                 }
                             },
-                            // 其他会建立新的scope的表达式，如果会注入变量err，不要去替换
-
+                            // 如果作用域内有声明的同名的变量，不要去替换（也就不向下遍历了）
+                            All: (node: Node)=>{
+                                if(node[SCOPE_KEY] && node[SCOPE_KEY][(handler.param as ESTree.Identifier).name]){
+                                    return true
+                                }
+                            }
+                        })
+                        this.leapManager.withEntry(catchEntry, ()=>{
+                            this.explodeStatement(body);
                         })
 
                     }
-                })
 
+                    if(finallyLoc){
+                        this.updateContextPrevLoc(this.mark(finallyLoc))
+                        this.leapManager.withEntry(finallyEntry, ()=>{
+                            this.explodeStatement((stmt as ESTree.TryStatement).finalizer)
+                        })
+                        this.emit(gen.ReturnStatement(gen.CallExpression(
+                            this.contextProperty('finish'),
+                            [finallyEntry.firstLoc],
+                        )));
+                    }
+                })
+                this.mark(after);
+                break;
+            case 'ThrowStatement':
+                this.emit(gen.ThrowStatement(
+                    this.explodeExpression(stmt.argument)
+                ))
+                break;
+            default:
+                throw new Error('unknown Statement of type ' + JSON.stringify(stmt.type))
         }
     }
     updateContextPrevLoc(loc?: ESTree.Literal){

@@ -169,6 +169,13 @@ export function MemberExpression(varName, key, computed){
     }
 }
 
+export function ThrowStatement(arg){
+    return {
+        type: 'ThrowStatement',
+        argument: arg
+    }
+}
+
 export function UnaryExpression(operator, argument){
     return {
         "type": "UnaryExpression",
