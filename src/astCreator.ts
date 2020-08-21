@@ -121,6 +121,13 @@ export function YieldExpression(delegate: boolean, argument){
     }
 }
 
+export function SpreadElement(ar){
+    return {
+        "type": "SpreadElement",
+        "argument": ar
+    }
+}
+
 export function BreakStatement(label?) {
     return {
         type: 'BreakStatement',
@@ -173,6 +180,44 @@ export function ThrowStatement(arg){
     return {
         type: 'ThrowStatement',
         argument: arg
+    }
+}
+
+export function NewExpression(callee, arg){
+    return {
+        type: 'NewExpression',
+        callee,
+        arguments: arg,
+    }
+}
+
+export function ObjectExpression(props){
+    return {
+        type: 'ObjectExpression',
+        properties: props,
+    }
+}
+
+export function Property(key, value, computed, method = false){
+    return {
+        type: 'Property',
+        method,
+        shorthand: false,
+        computed,
+        key: {
+            type: 'Identifier',
+            name: key,
+        },
+        kind: 'init',
+        value,
+    }
+}
+export function UpdateExpression(op: '++'|'--', prefix: boolean, argument){
+    return {
+        "type": "UpdateExpression",
+        "operator": op,
+        "prefix": prefix,
+        "argument": argument
     }
 }
 

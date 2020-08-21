@@ -63,6 +63,7 @@ const functionHandler = (node: ESTree.FunctionExpression|ESTree.FunctionDeclarat
          * test(){xxxx}
          * ====>
          * test(){
+         *     // var i = 123 加在这里
          *     return resyncRuntime.mark(function rs_wraptest(){xxxx})()
          * }
          */
@@ -127,7 +128,12 @@ const functionHandler = (node: ESTree.FunctionExpression|ESTree.FunctionDeclarat
 
     // 3. 最重要的部分，转译函数体
     let emitter = new Emitter(contextName)
+    emitter.explode(innerFunc)
 
+    // 4. 后续工作
+    if(vars && vars.declarations.length){
+
+    }
 
 }
 
@@ -140,8 +146,5 @@ function resync(node: Node){
             if(!shouldResync(node)) return
 
         },
-        ClassExpression: (node, parents, parentKeys) => {
-
-        }
     })
 }

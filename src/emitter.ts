@@ -2,7 +2,6 @@ import {Node, ESTree } from "./types";
 import { LeapManager, TryEntry, LabeledEntry, LoopEntry, SwitchEntry, CatchEntry, FinallyEntry} from "./leap";
 import * as gen from './astCreator'
 import * as meta from './meta'
-import { ForStatement } from "estree";
 import * as util from './util'
 import { walk, SCOPE_KEY, walkWithScope } from "./astHelper";
 
@@ -376,7 +375,7 @@ export default class Emitter {
                 }
                 let discriminant = stmt.discriminant;
                 stmt.discriminant = condition
-                this.jump(this.explodeExpression(discriminant))
+                this.jump((this.explodeExpression(discriminant) as ESTree.Literal))
 
                 this.leapManager.withEntry(
                     new SwitchEntry(after),
@@ -492,6 +491,7 @@ export default class Emitter {
             default:
                 throw new Error('unknown Statement of type ' + JSON.stringify(stmt.type))
         }
+
     }
     updateContextPrevLoc(loc?: ESTree.Literal){
         if(loc){
@@ -541,13 +541,226 @@ export default class Emitter {
         return this.insertedLocs.some(_=>_===some)
     }
 
-    explodeExpression(node: Node, ignoreResult?: boolean): ESTree.Literal {
-        // todo:
-        return;
+    explodeExpression(node: Node, ignoreResult?: boolean): any{
+        let expr = node;
+        if(!expr){
+            // @ts-ignore
+            return expr
+        }
+        let result;
+        let after;
+        const finish = (expr) => {
+            if(ignoreResult){
+                this.emit(expr)
+            }else{
+                return expr
+            }
+        }
+
+        if(!meta.containsLeap(expr)){
+            return finish(expr)
+        }
+
+        let hasLeapingChildren = meta.containsLeap.onlyChildren(expr)
+
+        const explodeViaTempVar = (tempVar, child, ignoreChildResult?) => {
+            let result = this.explodeExpression(child, ignoreChildResult)
+            if(ignoreChildResult){
+
+            }else if(tempVar || hasLeapingChildren && result.type != 'Literal'){
+                result = this.emitAssign(
+                    tempVar || this.makeTempVar(),
+                    result,
+                )
+            }
+            return result
+        }
+
+        switch(expr.type){
+            case 'MemberExpression':
+                return finish(gen.MemberExpression(
+                    this.explodeExpression(expr.object),
+                    expr.computed?explodeViaTempVar(null, expr.property):expr.property,
+                    expr.computed,
+                ))
+            case 'CallExpression':
+                let callee = expr.callee
+                let args = expr.arguments
+
+                let newCallee, newArgs;
+                let hasLeapingArgs = args.some(a_=>meta.containsLeap(a_))
+                let injectFirstArg = null
+                if(callee.type === 'MemberExpression'){
+                    if(hasLeapingArgs){
+                        let newObject = explodeViaTempVar(this.makeTempVar(), callee.object)
+                        let newProperty = callee.computed?explodeViaTempVar(null, callee.property):callee.property
+                        injectFirstArg = newObject
+                        newCallee = gen.MemberExpression(
+                            gen.MemberExpression(
+                                gen.clone(newObject),
+                                newProperty,
+                                callee.computed,
+                            ),
+                            gen.Identifier({name: 'call'}),
+                            false,
+                        );
+                    }else{
+                        newCallee = this.explodeExpression(callee)
+                    }
+                } else {
+                    newCallee = explodeViaTempVar(null, callee)
+                    if(newCallee.type == 'MemberExpression'){
+                        newCallee = gen.SequenceExpression([
+                            gen.Literal(0),
+                            gen.clone(newCallee),
+                        ])
+                    }
+                }
+
+                if(hasLeapingArgs){
+                    newArgs = args.map(arg => explodeViaTempVar(null, arg))
+                    if(injectFirstArg) newArgs.unshift(injectFirstArg)
+                    newArgs = newArgs.map(arg=> gen.clone(arg))
+                }else{
+                    newArgs = expr.arguments
+                }
+                return finish(gen.CallExpression(newCallee, newArgs))
+            case 'NewExpression':
+                return finish(gen.NewExpression(
+                    explodeViaTempVar(null, expr.callee),
+                    expr.arguments.map(_=>explodeViaTempVar(null, _))
+                ))
+            case 'ObjectExpression':
+                return finish(gen.ObjectExpression(
+                    expr.properties.map(_=>{
+                        if(_.type === 'Property'){
+                            return gen.Property(
+                                _.key,
+                                explodeViaTempVar(null, _.value),
+                                _.computed
+                            )
+                        }else{
+                            return _
+                        }
+                    })
+                ))
+            case 'ArrayExpression':
+                return finish(gen.ArrayExpression(
+                    expr.elements.map(_=>{
+                        if(_.type == 'SpreadElement'){
+                            return gen.SpreadElement(explodeViaTempVar(null, _.argument))
+                        }else{
+                            return explodeViaTempVar(null, _)
+                        }
+                    })
+                ))
+            case 'SequenceExpression':
+                let lastIndex = expr.expressions.length - 1
+                expr.expressions.forEach((_, index)=>{
+                    if(index === lastIndex){
+                        result = this.explodeExpression(_, ignoreResult)
+                    }else{
+                        this.explodeExpression(_, true)
+                    }
+                })
+                return result
+            case 'LogicalExpression':
+                after = this.loc()
+                if(!ignoreResult){
+                    result = this.makeTempVar()
+                }
+
+                let left = explodeViaTempVar(result, expr.left)
+                if(expr.operator === '&&'){
+                    this.jumpIfNot(left, after)
+                }else{
+                    this.jumpIf(left, after)
+                }
+                explodeViaTempVar(result, expr.right, ignoreResult)
+                this.mark(after)
+                return result
+            case 'ConditionalExpression':
+                let elseLoc = this.loc()
+                after = this.loc()
+                let test = this.explodeExpression(expr.test)
+                this.jumpIfNot(test, elseLoc)
+
+                if(!ignoreResult){
+                    result = this.makeTempVar()
+                }
+
+                explodeViaTempVar(result, expr.consequent, ignoreResult)
+                this.jump(after)
+                this.mark(elseLoc)
+                explodeViaTempVar(result, expr.alternate, ignoreResult)
+
+                this.mark(after)
+                return result
+            case 'UnaryExpression':
+                return finish(gen.UnaryExpression(
+                    expr.operator,
+                    this.explodeExpression(expr.argument),
+                ))
+            case 'BinaryExpression':
+                return finish(gen.BinaryExpression(
+                    expr.operator,
+                    explodeViaTempVar(null, expr.left),
+                    explodeViaTempVar(null, expr.right),
+                ))
+            case 'AssignmentExpression':
+                if(expr.operator == '='){
+                    return finish(gen.AssignmentExpression(
+                        expr.operator,
+                        this.explodeExpression(expr.left),
+                        this.explodeExpression(expr.right),
+                    ))
+                }
+                const lhs = this.explodeExpression(expr.left)
+                const temp = this.emitAssign(this.makeTempVar(), lhs)
+                return finish(gen.AssignmentExpression(
+                    '=',
+                    gen.clone(lhs),
+                    gen.AssignmentExpression(
+                        expr.operator,
+                        gen.clone(temp),
+                        this.explodeExpression(expr.right),
+                    )
+                ))
+
+            case 'UpdateExpression':
+                return finish(gen.UpdateExpression(
+                    expr.operator,
+                    expr.prefix,
+                    this.explodeExpression(expr.argument),
+                ))
+            case 'YieldExpression':
+                after = this.loc()
+                let arg = expr.argument && this.explodeExpression(expr.argument)
+                if(arg && expr.delegate){
+                    let result = this.makeTempVar()
+                    let ret = gen.ReturnStatement(gen.CallExpression(
+                        this.contextProperty('delegateYield'),
+                        [arg, gen.Literal(result.property.name), after],
+                    ))
+                    // todo: 目前没有位置信息
+                    // ret.start = expr.start
+                    // ret.end = expr.end
+                    this.emit(ret)
+                    this.mark(after)
+                    return result
+                }
+
+                this.emitAssign(this.contextProperty('next'), after)
+                let ret = gen.ReturnStatement(gen.clone(arg) || null)
+                // ret.loc = expr.loc
+                this.emit(ret)
+                this.mark(after)
+                return this.contextProperty('sent')
+            default:
+                throw new Error('unknown Expression of type '+ JSON.stringify(expr.type))
+        }
+
     }
-
-
-
 }
 
 function isValidCompletion(record: {type: string, target?: ESTree.Literal}){

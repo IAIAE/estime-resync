@@ -109,7 +109,15 @@ function injectScope(node:Node, parents, noSkip?: boolean){
             node[SCOPE_KEY][key] = true
         })
         injectScope(node.body, parents.concat([node]))
-    }else if(node.type === 'VariableDeclaration'){
+    }else if(node.type === 'SwitchStatement'){
+        // switch只开了一个scope
+        node[SCOPE_KEY] = {}
+        node.cases.forEach((child)=>{
+            child.consequent && child.consequent.forEach(item=>{
+                injectScope(item, parents.concat([node, child]))
+            })
+        })
+    } else if(node.type === 'VariableDeclaration'){
         let keys = getFuncParam(node.declarations.map(_=>_.id))
         injectKeyToScope(parents, keys, node.kind)
         intoChild(node, (child)=>{
